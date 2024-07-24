@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 '''
-get : receive 
-post : receive 
+get : retrieve 
+post : create 
 put : update
 delete : delete
 '''
