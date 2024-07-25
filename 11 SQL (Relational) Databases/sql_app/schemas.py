@@ -9,7 +9,7 @@ class Item(ItemBase):
     id: int
     owner_id: int
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class  UserBase(BaseModel):
     email:str
@@ -22,4 +22,4 @@ class User(UserBase):
     is_active: bool
     items: list[Item] = []
     class Config:
-        orm_mode = True
+        from_attributes = True

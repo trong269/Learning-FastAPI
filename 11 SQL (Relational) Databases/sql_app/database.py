@@ -8,7 +8,7 @@ declarative_base: Hàm này tạo ra một lớp cơ sở mà tất cả các mo
 sessionmaker: Hàm này tạo ra một lớp Session mà bạn sẽ sử dụng để tương tác với cơ sở dữ liệu.
 '''
 # cấu hình kết nối CSDL
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://user:password@localhost/dbname"
+SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:Trongnguyen123@localhost:3306/learn_fastapi"
 # tạo engine
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 # tạo SessionLocal

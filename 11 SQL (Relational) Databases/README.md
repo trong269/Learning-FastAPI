@@ -122,39 +122,41 @@ class User(UserBase):
 #### Read
 ```python
 from sqlalchemy.orm import Session
-from . import models, schemas
-# lấy 1 user từ user_id
+import models, schemas
+# lấy một user
 def get_user( db:Session, user_id : int ):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     return db_user
 # lấy 1 user từ user_email
 def get_user_by_email(db:Session, user_email : str):
-    return db.query(models.User).filter(models.User.email == user_email)
+    return db.query(models.User).filter(models.User.email == user_email).first()
 # đọc nhiều user
 def get_users(db:Session, skip:int = 0, limit:int = 100):
     return db.query(models.User).offset(skip).limit(limit).all()
+#lấy một item
+def get_item(db:Session, item_id: int ):
+    return db.query(models.Item).filter(models.Item.id == item_id).first()
 # lấy nhiều item
 def get_items(db:Session, skip:int = 0 , limit:int = 100):
     return db.query(models.Item).offset(skip).limit(limit).all()
 ```
 #### Create
 Tạo một SQLAlchemy model instance với dữ liệu của bạn
-* `add()`: thêm instance object vào phiên làm việc
+* `add(...)`: thêm instance object vào phiên làm việc
 * `commit()`: lưu các đối tượng trong phiên làm việc vào CSDL
-* `refresh()`: làm mới, đảm bảo rằng đối tượng đã được thêm vào trong CSDL
+* `refresh(...)`: làm mới, đảm bảo rằng đối tượng đã được thêm vào trong CSDL
 
 ```python
 from sqlalchemy.orm import Session
-from . import models, schemas
+import models, schemas
 
 # tạo một user mới
 def create_user(db:Session, user:schemas.UserCreate):
-  # hashed_password chỉ mang tính chất minh họa, trong thực tế cần sử dụng thuật toán để hashing password
-    hashed_password = user.password + "hashed_password" 
+    hashed_password = user.password + "hashed_password" # chỉ mang tính chất minh họa, trong thực tế cần sử dụng thuật toán để hashing password
     db_user = models.User(email = user.email, hashed_password = hashed_password)
     db.add(db_user)
     db.commit()
-    db.refresh()
+    db.refresh(db_user)
     return db_user
 # Tạo mới một item và liên kết nó với một người dùng cụ thể
 def create_user_item(db: Session, item: schemas.ItemCreate, user_id: int):
@@ -163,4 +165,133 @@ def create_user_item(db: Session, item: schemas.ItemCreate, user_id: int):
     db.commit()
     db.refresh(db_item)
     return db_item
+```
+#### Update
+
+```python
+from sqlalchemy.orm import Session
+import models, schemas
+
+# cập nhật user
+def update_user_email(db: Session, user_id: int, user_update: schemas.UserCreate):
+    db_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if db_user:
+        db_user.email = user_update.email
+        # Không cập nhật password trong ví dụ này, nhưng bạn có thể thêm vào nếu cần
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+    return db_user
+# cập nhật item
+def update_item(db: Session, item_id: int, item_update: schemas.ItemBase):
+    db_item = db.query(models.Item).filter(models.Item.id == item_id).first()
+    if db_item:
+        db_item.title = item_update.title
+        db_item.description = item_update.description
+        db.add(db_item)
+        db.commit()
+        db.refresh(db_item)
+    return db_item
+```
+#### Delete
+```python
+from sqlalchemy.orm import Session
+import models, schemas
+
+# Xóa user
+def delete_user(db: Session, user_id: int):
+    db_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if db_user:
+        db.delete(db_user)
+        db.commit()
+    return db_user
+# Xóa item
+def delete_item(db: Session, item_id: int):
+    db_item = db.query(models.Item).filter(models.Item.id == item_id).first()
+    if db_item:
+        db.delete(db_item)
+        db.commit()
+    return db_item
+```
+### 5. Main FastAPI app
+
+```python
+from fastapi import FastAPI, HTTPException, Depends
+from sqlalchemy.orm import Session
+import crud, schemas, models
+from database import SessionLocal, engine
+
+models.Base.metadata.create_all(bind=engine)
+app = FastAPI()
+
+# dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.post("/users/", response_model=schemas.User)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    db_user = crud.get_user_by_email(db, user_email=user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return crud.create_user(db=db, user=user)
+
+
+@app.get("/users/", response_model=list[schemas.User])
+def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    users = crud.get_users(db, skip=skip, limit=limit)
+    return users
+
+
+@app.get("/users/{user_id}", response_model=schemas.User)
+def read_user(user_id: int, db: Session = Depends(get_db)):
+    db_user = crud.get_user(db, user_id=user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
+
+
+@app.post("/users/{user_id}/items/", response_model=schemas.Item)
+def create_item_for_user(user_id: int, item: schemas.ItemCreate, db: Session = Depends(get_db)):
+    db_user = crud.get_user(db=db, user_id=user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail='User does not exist')
+    return crud.create_user_item(db=db, item=item, user_id=user_id)
+
+
+@app.get("/items/", response_model=list[schemas.Item])
+def read_items(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    items = crud.get_items(db, skip=skip, limit=limit)
+    return items
+
+@app.put('/users/{user_id}', response_model=schemas.User)
+async def update_user_email(user_id : int , user_update: schemas.UserCreate, db: Session= Depends(get_db)):
+    db_user = crud.get_user(db=db, user_id=user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail='User does not exist')
+    return crud.update_user_email(db=db, user_id=user_id, user_update=user_update )
+
+@app.put('/items/{item_id}', response_model=schemas.Item)
+async def update_item( item_id : int , item_update: schemas.ItemBase, db:Session = Depends(get_db)):
+    db_item = crud.get_item(db=db, item_id=item_id)
+    if not db_item:
+        raise HTTPException(status_code=404, detail='Item does not exist')
+    return crud.update_item(db=db, item_id=item_id, item_update=item_update)
+
+@app.delete('/users/{user_id}', response_model=schemas.User)
+async def delete_user(user_id : int , db:Session = Depends(get_db)):
+    db_user = crud.get_user(db=db, user_id=user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail='User does not exist')
+    return crud.delete_user(user_id=user_id, db=db)
+
+@app.delete('/items/{item_id}', response_model=schemas.Item)
+async def delete_item(item_id : int , db:Session= Depends(get_db)):
+    db_item = crud.get_item(db=db, item_id=item_id)
+    if not db_item:
+        raise HTTPException(status_code=404, detail='Item does not exist')
+    return crud.delete_item(item_id=item_id, db=db)
 ```
