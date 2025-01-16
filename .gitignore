@@ -1,2 +1,3 @@
+.gitignore
 .venv
 test_main.http
